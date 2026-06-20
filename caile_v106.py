@@ -16161,8 +16161,25 @@ class LotteryMachineStageWidget(QWidget):
         self.setMinimumHeight(_sc(200))
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._timer = QTimer(self)
-        self._timer.timeout.connect(self.update)
+        self._timer.timeout.connect(self._on_tick)
         self._reset_balls()
+
+    def _on_tick(self):
+        """定时器槽：更新动画状态，然后触发重绘。状态修改在此进行，paintEvent 只负责绘制。"""
+        if self.dropping:
+            # 计算掉落动画所需的 n_anim（与 paintEvent 保持一致）
+            stagger, travel = 6, 20
+            tray_h = max(26, int(self.height() * 0.16))
+            bd2 = tray_h - 8
+            per = max(1, (self.width() - 28) // (bd2 + 5))
+            n_anim = min(len(self.selected), per)
+            self.drop += 1
+            if self.drop >= (n_anim - 1) * stagger + travel + 3:
+                self.dropping = False
+                self._timer.start(70)   # 动画结束，降速省电
+        elif self.phase != "shake":
+            self._timer.start(70)       # 静置时低频跑闪光
+        self.update()
 
     def showEvent(self, e):
         # 仅在可见时跑动画定时器，省电；闪光/水波持续轻微动，摇奖/掉落时更快。
