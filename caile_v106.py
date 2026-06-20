@@ -23106,7 +23106,7 @@ class LotteryApp(QMainWindow):
             front = self.pick_numbers_by_coldhot("大乐透", "front", 5)
             back  = self.pick_numbers_by_coldhot("大乐透", "back",  2)
 
-        if not (sum_min <= sum(front) + sum(back) <= sum_max) and method == "随机":
+        if not (sum_min <= sum(front) + sum(back) <= sum_max):
             front = self.pick_numbers_by_coldhot("大乐透", "front", 5)
             back  = self.pick_numbers_by_coldhot("大乐透", "back",  2)
 
@@ -36431,7 +36431,8 @@ def _v76_weighted_fusion_predict(self, game, count=5, window="100"):
             ranked += [n for n in pool if n not in ranked]
         return sorted(ranked[:need])
     if game == "双色球":
-        return {"red": top_from("red", 6), "blue": top_from("blue", 1)[0]}
+        blue_list = top_from("blue", 1)
+        return {"red": top_from("red", 6), "blue": blue_list[0] if blue_list else 1}
     if game == "大乐透":
         return {"front": top_from("front", 5), "back": top_from("back", 2)}
     if game == "快乐8":
@@ -37939,6 +37940,7 @@ def _v82_rolling_backtest_models(self, game, windows=(30, 50, 100), model_keys=N
     _v82_ensure_runtime_files()
     logger.info("========== V82开始滚动回测 ==========")
     logger.info(f"彩票:{game} windows:{windows} min_train:{min_train}")
+    model_keys = None
     try:
         records = list((getattr(self, 'history_data', {}) or {}).get(game, []) or [])
         logger.info(f"{game}原始历史记录:{len(records)}期")
@@ -41708,10 +41710,10 @@ def _v100_detect_game_from_tickets(self, tickets):
         if lens and maxs:
             avg_len = max(set(lens), key=lens.count)
             mx = max(maxs)
+            if avg_len == 7 and mx > 31:
+                return "福建36选7"
             if avg_len == 7 and mx <= 31:
                 return "福建31选7"
-            if avg_len == 7 and mx <= 36:
-                return "福建36选7"
             if avg_len == 5 and mx <= 22:
                 return "福建22选5"
     try:
