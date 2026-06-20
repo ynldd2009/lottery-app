@@ -1629,10 +1629,10 @@ class ScraplingLotteryFetcher:
         freq = Counter(flat)
         sorted_by_freq = sorted(freq, key=lambda x: -freq[x])
 
-        hot_n  = min(10, len(sorted_by_freq) // 3)
-        cold_n = min(10, len(sorted_by_freq) // 3)
+        hot_n  = min(10, max(1, len(sorted_by_freq) // 3))
+        cold_n = min(10, max(1, len(sorted_by_freq) // 3))
         hot_nums  = sorted_by_freq[:hot_n]
-        cold_nums = sorted_by_freq[-cold_n:]
+        cold_nums = sorted_by_freq[-cold_n:] if cold_n > 0 else []
 
         # 计算当前遗漏
         last_appeared = {}
@@ -2424,7 +2424,7 @@ class HistoryCompareDialog(QDialog):
     """历史开奖比对对话框（支持按区域/位置比对，匹配号码红色高亮）"""
     def __init__(self, parent=None, game_type="双色球", selected_numbers=None, structured_numbers=None):
         super().__init__(parent)
-        self.parent = parent
+        self._app = parent
         self.game_type = game_type
         self.selected_numbers = selected_numbers or []  # 扁平列表（备用）
         self.structured_numbers = structured_numbers    # 结构化数据，如 {"red":[...], "blue":[...]} 或 {"pos1":[...], ...}
@@ -2451,8 +2451,8 @@ class HistoryCompareDialog(QDialog):
         self.load_history_issues()
 
     def load_history_issues(self):
-        if self.game_type in self.parent.history_data:
-            records = self.parent.history_data[self.game_type]
+        if self.game_type in self._app.history_data:
+            records = self._app.history_data[self.game_type]
             for rec in records[:50]:  # 最近50期
                 self.issue_list.addItem(f"{rec.get('期号','')} - {rec.get('开奖日期','')}")
 
@@ -2463,7 +2463,7 @@ class HistoryCompareDialog(QDialog):
             return
         issue_text = selected.text().split(" - ")[0]
         # 查找该期记录
-        for rec in self.parent.history_data.get(self.game_type, []):
+        for rec in self._app.history_data.get(self.game_type, []):
             if rec.get("期号") == issue_text:
                 self.compare_numbers_with_record(rec)
                 return
@@ -4516,7 +4516,7 @@ class MultiDanRotationDialog(QDialog):
                     nums += " + " + " ".join(f"{x:02d}" for x in sub)
                 bets_count = self._package_ticket_units(t) if t.get("package") else math_comb(len(tuo), main_n - len(dan))
                 bet_type = f"套餐票-{t.get('package','胆拖')}" if t.get("package") else "多胆轮流-胆拖"
-            price = self._package_price_per_unit() if t.get("package") else (3.0 if self.game_type == "大乐透" else 2.0)
+            price = self._package_price_per_unit() if t.get("package") else 2.0
             try:
                 self.app.add_betting_record(self.game_type, bet_type, nums, bets_count, bets_count * price)
                 cnt += bets_count
@@ -5281,8 +5281,8 @@ class DragonPhoenixPredictDialog(QDialog):
         trend_p = set(phoenixes[:5])
         # 均值±1区间
         import statistics
-        d_mean = round(statistics.mean(dragons[:30]))
-        p_mean = round(statistics.mean(phoenixes[:30]))
+        d_mean = round(statistics.mean(dragons[:30])) if dragons else (max_num // 2)
+        p_mean = round(statistics.mean(phoenixes[:30])) if phoenixes else (max_num // 2)
         mean_d = {max(1, d_mean-2), max(1, d_mean-1), d_mean, min(max_num, d_mean+1), min(max_num, d_mean+2)}
         mean_p = {max(1, p_mean-2), max(1, p_mean-1), p_mean, min(max_num, p_mean+1), min(max_num, p_mean+2)}
 
@@ -10555,7 +10555,7 @@ class FucaiComboDialog(QDialog):
                 warm = self.ssq_warm_count.value()
                 cold = self.ssq_cold_count.value()
                 total = hot + warm + cold
-                ratios = {'hot': hot/total if total>0 else 0, 'warm': warm/total, 'cold': cold/total}
+                ratios = {'hot': hot/total if total>0 else 0, 'warm': warm/total if total>0 else 0, 'cold': cold/total if total>0 else 0}
                 red = self.parent.pick_numbers_by_coldhot("双色球", "red", 6, ratios=ratios)
                 blue = self.parent.pick_numbers_by_coldhot("双色球", "blue", 1, ratios=ratios)[0]
                 line = f"红球: {', '.join(map(str, red))} 蓝球: {blue}"
@@ -10608,7 +10608,7 @@ class FucaiComboDialog(QDialog):
                 warm = self.kl8_warm_count.value()
                 cold = self.kl8_cold_count.value()
                 total = hot + warm + cold
-                ratios = {'hot': hot/total if total>0 else 0, 'warm': warm/total, 'cold': cold/total}
+                ratios = {'hot': hot/total if total>0 else 0, 'warm': warm/total if total>0 else 0, 'cold': cold/total if total>0 else 0}
                 nums = self.parent.pick_numbers_by_coldhot("快乐8", "main", num_count, ratios=ratios)
                 line = f"号码: {', '.join(map(str, nums))}"
             else:
@@ -10670,7 +10670,7 @@ class FucaiComboDialog(QDialog):
                 warm = self.qlc_warm_count.value()
                 cold = self.qlc_cold_count.value()
                 total = hot + warm + cold
-                ratios = {'hot': hot/total if total>0 else 0, 'warm': warm/total, 'cold': cold/total}
+                ratios = {'hot': hot/total if total>0 else 0, 'warm': warm/total if total>0 else 0, 'cold': cold/total if total>0 else 0}
                 nums = self.parent.pick_numbers_by_coldhot("七乐彩", "main", 7, ratios=ratios)
                 line = f"号码: {', '.join(map(str, nums))}"
             else:
@@ -11431,20 +11431,20 @@ class SportComboDialog(QDialog):
             tails = [t for t, cb in enumerate(tail_checkboxes) if cb.isChecked()] or list(range(10))
             rp = [x for x in range(1, 34) if x % 10 in tails]
             bp = [x for x in range(1, 17) if x % 10 in tails]
-            red  = sorted(random.sample(rp, 6)) if len(rp) >= 6 else self.pick_numbers_by_coldhot("双色球", "red", 6)
+            red  = sorted(random.sample(rp, 6)) if len(rp) >= 6 else self.parent.pick_numbers_by_coldhot("双色球", "red", 6)
             blue = random.choice(bp) if bp else random.randint(1, 16)
         elif method == "冷热号选号":
             total = hot + warm + cold or 1
             ratios = {'hot': hot / total, 'warm': warm / total, 'cold': cold / total}
-            red  = self.pick_numbers_by_coldhot("双色球", "red",  6, ratios=ratios)
-            blue = self.pick_numbers_by_coldhot("双色球", "blue", 1, ratios=ratios)[0]
+            red  = self.parent.pick_numbers_by_coldhot("双色球", "red",  6, ratios=ratios)
+            blue = self.parent.pick_numbers_by_coldhot("双色球", "blue", 1, ratios=ratios)[0]
         else:
-            red  = self.pick_numbers_by_coldhot("双色球", "red",  6)
-            blue = self.pick_numbers_by_coldhot("双色球", "blue", 1)[0]
+            red  = self.parent.pick_numbers_by_coldhot("双色球", "red",  6)
+            blue = self.parent.pick_numbers_by_coldhot("双色球", "blue", 1)[0]
 
         if not (sum_min <= sum(red) + blue <= sum_max) and method == "随机":
-            red  = self.pick_numbers_by_coldhot("双色球", "red",  6)
-            blue = self.pick_numbers_by_coldhot("双色球", "blue", 1)[0]
+            red  = self.parent.pick_numbers_by_coldhot("双色球", "red",  6)
+            blue = self.parent.pick_numbers_by_coldhot("双色球", "blue", 1)[0]
 
         return f"红球: {', '.join(map(str, red))} 蓝球: {blue}"
 
@@ -11519,9 +11519,11 @@ class SportComboDialog(QDialog):
         qxc_gen_btn = QPushButton("🎲 生成号码")
         qxc_gen_btn.setStyleSheet("background:#E74C3C;color:white;font-weight:bold;padding:6px;")
         def _gen_qxc():
-            nums = [self.parent.pick_numbers_by_coldhot("七星彩", f"pos{i+1}", 1)[0] for i in range(7)]
-            lines = ["号码: " + " ".join(map(str, nums))]
-            self.qxc_edit.setPlainText("\n".join(lines * self.qxc_bet_count.value()))
+            lines = []
+            for _ in range(self.qxc_bet_count.value()):
+                nums = [self.parent.pick_numbers_by_coldhot("七星彩", f"pos{i+1}", 1)[0] for i in range(7)]
+                lines.append("号码: " + " ".join(map(str, nums)))
+            self.qxc_edit.setPlainText("\n".join(lines))
         qxc_gen_btn.clicked.connect(_gen_qxc)
         layout.addWidget(qxc_gen_btn)
 
@@ -18321,7 +18323,7 @@ class LotteryApp(QMainWindow):
                 elif hot_type == "cold": item_hot.setForeground(QColor("#3498DB"))
                 tbl.setItem(row, 5, item_hot)
                 # 高遗漏红色背景
-                if omit_val > max_v * 0.8:
+                if max_v > 0 and omit_val > max_v * 0.8:
                     for c in range(6):
                         if tbl.item(row, c):
                             tbl.item(row, c).setBackground(QColor("#FFEBEE"))
@@ -18745,8 +18747,8 @@ class LotteryApp(QMainWindow):
                 re_tbl.setRowCount(total_r - 1)
                 repeat_counts = []; edge_counts = []; consec_counts = []
                 for i in range(1, total_r):
-                    prev_nums = get_main(parse_draw_numbers(records[i-1].get("开奖号码","")))
-                    curr_nums = get_main(parse_draw_numbers(records[i].get("开奖号码","")))
+                    prev_nums = get_main(parse_draw_numbers(records[i].get("开奖号码","")))
+                    curr_nums = get_main(parse_draw_numbers(records[i-1].get("开奖号码","")))
                     prev_set = set(prev_nums); curr_set = set(curr_nums)
                     repeats = sorted(curr_set & prev_set)
                     edges   = sorted([n for n in curr_nums if n in edge_def])
@@ -20437,7 +20439,7 @@ class LotteryApp(QMainWindow):
             n_look = min(20, len(series))
             scores = {}
             for n in nums:
-                y = [1.0 if n in draw else 0.0 for draw in series[:n_look]]
+                y = [1.0 if n in draw else 0.0 for draw in reversed(series[:n_look])]
                 # 简单线性回归 y = a*x + b，x=[0,1,...,n-1]
                 xs = list(range(n_look))
                 x_mean = (n_look - 1) / 2
@@ -21033,7 +21035,8 @@ class LotteryApp(QMainWindow):
             ranked = sorted(nums, key=lambda x: -final.get(x, 0))
             pool = ranked[:max(count*2, 12)]
             pool_w = [max(0.01, final.get(n, 0.01)) for n in pool]
-            return sorted(pool[:count])
+            chosen = random.choices(pool, weights=pool_w, k=min(count, len(pool)))
+            return sorted(set(chosen))[:count] if len(set(chosen)) >= count else sorted(pool[:count])
 
         dispatch = {
             "1":  _random_forest,      # 随机森林
@@ -21506,8 +21509,8 @@ class LotteryApp(QMainWindow):
                 for pred in selected_predictions:
                     red_set.update(pred['red'])
                     blue_set.add(pred['blue'])
-                red_pool = list(red_set)
-                blue_pool = list(blue_set)
+                red_pool = sorted(red_set)
+                blue_pool = sorted(blue_set)
                 if dan_count >= len(red_pool):
                     QMessageBox.warning(self, "错误", "胆码个数不能大于等于红球总数")
                     return 0, 0
@@ -21521,8 +21524,8 @@ class LotteryApp(QMainWindow):
                 for pred in selected_predictions:
                     front_set.update(pred['front'])
                     back_set.update(pred['back'])
-                front_pool = list(front_set)
-                back_pool = list(back_set)
+                front_pool = sorted(front_set)
+                back_pool = sorted(back_set)
                 if dan_count >= len(front_pool):
                     QMessageBox.warning(self, "错误", "胆码个数不能大于等于前区总数")
                     return 0, 0
@@ -23014,7 +23017,11 @@ class LotteryApp(QMainWindow):
             elif game_type == "七乐彩":
                 nums = draw_nums[:7] if len(draw_nums) >= 7 else []
             elif game_type in ["3D", "排列三"]:
-                nums = draw_nums[:3] if len(draw_nums) >= 3 else []
+                try:
+                    pi = int(area[3:]) - 1  # pos1->0, pos2->1, pos3->2
+                    nums = [draw_nums[pi] % 10] if len(draw_nums) > pi else []
+                except (ValueError, IndexError):
+                    nums = draw_nums[:3] if len(draw_nums) >= 3 else []
             elif game_type == "七星彩":
                 nums = draw_nums[:7] if len(draw_nums) >= 7 else []
             elif game_type == "排列五":
