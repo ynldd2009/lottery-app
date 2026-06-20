@@ -13507,9 +13507,9 @@ def _extract_nums_from_qr_text(text: str, main_max: int, main_need: int,
     # 先去掉玩法标识里带数字的英文标记(kl8/3d/pl3/pl5/qlc等)，
     # 否则 'kl8' 的 8、'3d' 的 3 会被当成球号混入。
     src = _re.sub(r"(?i)\b(kl8|pl3|pl5|3d|qxc|qlc|ssq|dlt)\b", " ", src)
-    # 彩票球号最多2位(最大80)，任何连续3位及以上的数字串必为
-    # 期号/流水号/条码/金额，绝不是球号 → 整体删除，避免被拆进球号。
-    src = _re.sub(r"\d{3,}", " ", src)
+    # 彩票球号最多2位(最大80)，7位及以上的数字串必为期号/流水号/条码/金额 → 整体删除。
+    # 注：原来删除3位以上，但会把连续号码字串(如"030712")也删掉，改为7位以上更安全。
+    src = _re.sub(r"\d{7,}", " ", src)
     mains, subs = [], []
     if "+" in src:
         seg = _re.search(r"([\d\s]+\+[\d\s]+)", src)
@@ -14816,7 +14816,7 @@ class QRScanCheckDialog(QDialog):
                     if subs:
                         num_str += " + " + " ".join(f"{n:02d}" for n in subs)
         if not num_str:
-            nums = [int(x) for x in re.findall(r"\b\d{2}\b", num_src) if 1 <= int(x) <= 99]
+            nums = [int(x) for x in re.findall(r"\b\d{1,2}\b", num_src) if 1 <= int(x) <= 99]
             if nums:
                 num_str = " ".join(f"{n:02d}" for n in nums[:10])
         if num_str:
@@ -14962,6 +14962,9 @@ class QRScanCheckDialog(QDialog):
         elif game == "快乐8":
             mh = len(set(main) & set(draw[:20]))
             lines.append(f"命中: {mh}/{len(main)}（开奖20个）")
+        else:
+            mh = len(set(main) & set(draw[:need_main]))
+            lines.append(f"命中{mh}个")
 
         # 逐注枚举求总奖
         try:
@@ -16166,6 +16169,7 @@ class LotteryMachineStageWidget(QWidget):
 
     def _on_tick(self):
         """定时器槽：更新动画状态，然后触发重绘。状态修改在此进行，paintEvent 只负责绘制。"""
+        self.frame += 1   # 驱动 2026 闪光旋转与水波微动
         if self.dropping:
             # 计算掉落动画所需的 n_anim（与 paintEvent 保持一致）
             stagger, travel = 6, 20
@@ -16299,7 +16303,6 @@ class LotteryMachineStageWidget(QWidget):
         bg.setColorAt(0.0, QColor("#3b1f72")); bg.setColorAt(1.0, QColor("#1d0c42"))
         p.setPen(Qt.NoPen); p.setBrush(bg)
         p.drawRoundedRect(0, 0, w, h, 14, 14)
-        self.frame += 1   # 驱动 2026 闪光旋转与水波微动（仅可见时定时器在跑）
 
         cx = w / 2
         sphere_top = 16
@@ -16467,12 +16470,6 @@ class LotteryMachineStageWidget(QWidget):
                 (px, py), lp = _pos(i)
                 if lp < 1.0:
                     self._draw_ball(p, px, py, bd2, color, f"{int(num):02d}", True)
-            self.drop += 1
-            if self.drop >= (n_anim - 1) * stagger + travel + 3:
-                self.dropping = False
-                self._timer.start(70)   # 动画结束，降速省电
-        elif self.phase != "shake":
-            self._timer.start(70)       # 静置时低频跑闪光
         p.end()
 
 
@@ -17764,6 +17761,11 @@ class LotteryApp(QMainWindow):
         if target_issue == issue:
             record.update({"prize_checked": True, "prize_level": "未中奖",
                            "prize_amount": 0, "match_issue": issue})
+        else:
+            # target_issue 为空串或与 issue 不符时，也标记已检查，避免重复查询
+            if not record.get("prize_checked"):
+                record["prize_checked"] = True
+                record["prize_level"] = record.get("prize_level", "未中奖")
         return False
 
     def check_single_game_prize(self, game_type, draw_record):
@@ -17919,7 +17921,7 @@ class LotteryApp(QMainWindow):
             if game == "双色球":   draw_main = set(draw_nums[:6]); draw_aux = set(draw_nums[6:])
             elif game == "大乐透": draw_main = set(draw_nums[:5]); draw_aux = set(draw_nums[5:])
             elif game == "七乐彩": draw_main = set(draw_nums[:7]); draw_aux = set(draw_nums[7:])
-            elif game == "七星彩": draw_main = set(draw_nums[:6]); draw_aux = set(draw_nums[6:])
+            elif game == "七星彩": draw_main = set(draw_nums[:7]); draw_aux = set()
             else:                  draw_main = set(draw_nums);     draw_aux = set()
             draw_nums_str = draw_rec.get("开奖号码","")
         else:
@@ -18004,7 +18006,7 @@ class LotteryApp(QMainWindow):
             if game == "双色球":   draw_main = set(draw_nums[:6]); draw_aux = set(draw_nums[6:])
             elif game == "大乐透": draw_main = set(draw_nums[:5]); draw_aux = set(draw_nums[5:])
             elif game == "七乐彩": draw_main = set(draw_nums[:7]); draw_aux = set(draw_nums[7:])
-            elif game == "七星彩": draw_main = set(draw_nums[:6]); draw_aux = set(draw_nums[6:])
+            elif game == "七星彩": draw_main = set(draw_nums[:7]); draw_aux = set()
             else:                  draw_main = set(draw_nums);     draw_aux = set()
         else:
             draw_main = draw_aux = set()
@@ -27025,11 +27027,10 @@ class LotteryApp(QMainWindow):
             update_count()
 
         def apply_kill():
-            for i, btns in enumerate(position_buttons):
+            for btns in position_buttons:
                 for btn in btns:
-                    num = int(btn.text())
-                    if num in repeat_pos[i]:
-                        btn.setChecked(False)
+                    if btn.isChecked():
+                        btn.set_kill(True)
             update_count()
 
         def cancel_kill():
@@ -27101,7 +27102,7 @@ class LotteryApp(QMainWindow):
         filter_layout.addWidget(pos_combo)
         for start, end in intervals:
             btn = QPushButton(f"{start}-{end}")
-            btn.clicked.connect(lambda checked, s=start, e=end, p=int(pos_combo.currentIndex()): apply_interval(s, e, p))
+            btn.clicked.connect(lambda checked, s=start, e=end: apply_interval(s, e, pos_combo.currentIndex()))
             filter_layout.addWidget(btn)
 
         btn_hot = QPushButton("热号")
@@ -27130,10 +27131,11 @@ class LotteryApp(QMainWindow):
                 edge_nums.add((n - 1) % RANGE)
                 edge_nums.add((n + 1) % RANGE)
             edge_nums -= prev_flat
-            for btn in pos_buttons:
-                num = int(btn.text())
-                if num in edge_nums and not btn.is_kill:
-                    btn.setChecked(True)
+            for btns in position_buttons:
+                for btn in btns:
+                    num = int(btn.text())
+                    if num in edge_nums and not btn.is_kill:
+                        btn.setChecked(True)
             update_count()
 
         def apply_jump_qxc():
@@ -27153,10 +27155,11 @@ class LotteryApp(QMainWindow):
                     jump_nums.add((n - d) % RANGE)
                     jump_nums.add((n + d) % RANGE)
             jump_nums -= prev_flat
-            for btn in pos_buttons:
-                num = int(btn.text())
-                if num in jump_nums and not btn.is_kill:
-                    btn.setChecked(True)
+            for btns in position_buttons:
+                for btn in btns:
+                    num = int(btn.text())
+                    if num in jump_nums and not btn.is_kill:
+                        btn.setChecked(True)
             update_count()
 
         btn_edge_qxc = QPushButton("边码")
@@ -27719,9 +27722,9 @@ class LotteryApp(QMainWindow):
                 nums = list(all_selected)
                 lines = []
                 for i in range(len(nums)):
-                    for j in range(i+1, len(nums)):
-                        lines.append(f"组选三: {nums[i]} {nums[i]} {nums[j]}")
-                        lines.append(f"组选三: {nums[i]} {nums[j]} {nums[j]}")
+                    for j in range(len(nums)):
+                        if i != j:
+                            lines.append(f"组选三: {nums[i]} {nums[i]} {nums[j]}")
                 bets = len(lines)
                 result = "\n".join(lines)
 
@@ -27979,11 +27982,10 @@ class LotteryApp(QMainWindow):
             update_count()
 
         def apply_kill():
-            for i, btns in enumerate(position_buttons):
+            for btns in position_buttons:
                 for btn in btns:
-                    num = int(btn.text())
-                    if num in repeat_pos[i]:
-                        btn.setChecked(False)
+                    if btn.isChecked():
+                        btn.set_kill(True)
             update_count()
 
         def cancel_kill():
@@ -28051,7 +28053,7 @@ class LotteryApp(QMainWindow):
         filter_layout.addWidget(pos_combo)
         for start, end in intervals:
             btn = QPushButton(f"{start}-{end}")
-            btn.clicked.connect(lambda checked, s=start, e=end, p=int(pos_combo.currentIndex()): apply_interval(s, e, p))
+            btn.clicked.connect(lambda checked, s=start, e=end: apply_interval(s, e, pos_combo.currentIndex()))
             filter_layout.addWidget(btn)
 
         btn_hot = QPushButton("热号")
@@ -28080,10 +28082,11 @@ class LotteryApp(QMainWindow):
                 edge_nums.add((n - 1) % RANGE)
                 edge_nums.add((n + 1) % RANGE)
             edge_nums -= prev_flat
-            for btn in pos_buttons:
-                num = int(btn.text())
-                if num in edge_nums and not btn.is_kill:
-                    btn.setChecked(True)
+            for btns in position_buttons:
+                for btn in btns:
+                    num = int(btn.text())
+                    if num in edge_nums and not btn.is_kill:
+                        btn.setChecked(True)
             update_count()
 
         def apply_jump_pl5():
@@ -28103,10 +28106,11 @@ class LotteryApp(QMainWindow):
                     jump_nums.add((n - d) % RANGE)
                     jump_nums.add((n + d) % RANGE)
             jump_nums -= prev_flat
-            for btn in pos_buttons:
-                num = int(btn.text())
-                if num in jump_nums and not btn.is_kill:
-                    btn.setChecked(True)
+            for btns in position_buttons:
+                for btn in btns:
+                    num = int(btn.text())
+                    if num in jump_nums and not btn.is_kill:
+                        btn.setChecked(True)
             update_count()
 
         btn_edge_pl5 = QPushButton("边码")
@@ -30595,7 +30599,7 @@ class LotteryApp(QMainWindow):
         issues = [r.get("期号", "")[-4:] for r in records]  # 取期号后四位
 
         if game_type == "双色球":
-            ax = self.trend_figure.add_subplot(111)
+            ax = self.trend_figure.add_subplot(211)
             red_data = []
             blue_data = []
             for r in records:
@@ -31993,9 +31997,9 @@ class LotteryApp(QMainWindow):
                 # 简单合并
                 for game, records in data.items():
                     if game in self.history_data:
-                        existing_issues = {r["期号"] for r in self.history_data[game]}
+                        existing_issues = {r.get("期号","") for r in self.history_data[game]}
                         for rec in records:
-                            if rec["期号"] not in existing_issues:
+                            if rec.get("期号","") and rec.get("期号","") not in existing_issues:
                                 self.history_data[game].append(rec)
                         self.history_data[game].sort(key=lambda x: x["期号"], reverse=True)
                     else:
@@ -32423,7 +32427,7 @@ class LotteryApp(QMainWindow):
                     if status in (101, 102, 103):  # 密钥相关错误
                         QTimer.singleShot(0, lambda m=msg: QMessageBox.warning(
                             self, "❌ 密钥错误", f"极速API返回错误: {m}\n请检查密钥是否正确"))
-                    return None
+                    continue
             except Exception as e:
                 if attempt == 1:
                     logger.error(f"jisuapi {endpoint} error: {e}")
@@ -33796,8 +33800,9 @@ class LotteryApp(QMainWindow):
                     return uniq[:30]
             except Exception as e:
                 logger.warning(f"500_html {url}: {e}")
-        """
-        """
+        return []
+
+    def _fetch_sports_lottery_impl(self, game_type, silent=False):
         if game_type not in self.history_data:
             self.history_data[game_type] = []
 
@@ -41902,10 +41907,10 @@ def _v100_save_betting_history(self):
     try:
         now = _v100_time.time()
         last = getattr(self, "_v100_last_save_ts", 0)
-        if now - last > 3 and not getattr(self, "_v100_save_pending", False):
-            return _v100_save_betting_history_now(self)
         if getattr(self, "_v100_save_pending", False):
             return
+        if now - last > 3:
+            return _v100_save_betting_history_now(self)
         self._v100_save_pending = True
         QTimer.singleShot(3000, lambda: _v100_save_betting_history_now(self))
     except Exception:
@@ -42096,19 +42101,6 @@ except Exception:
 # 多源融合推荐 / 大小球 / 预测日志与实盘对账 / 自适应权重学习
 # 入口:主界面工具行「⚽ 竞彩足球」按钮(LotteryApp.open_jingcai)
 # ============================================================
-from PySide6.QtWidgets import (QCheckBox, QDoubleSpinBox, QFrame, QLineEdit,
-                               QListWidget, QListWidgetItem, QPlainTextEdit,
-                               QScrollArea, QSpinBox, QSplitter)
-from PySide6.QtCore import QRectF
-from PySide6.QtGui import QLinearGradient
-from dataclasses import dataclass, field
-from typing import Optional
-import hashlib
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-
 # -*- coding: utf-8 -*-
 """
 竞彩推荐助手 (BSD 数据源版) v3 —— 世界杯绿茵主题 · 竖屏适配
@@ -43051,7 +43043,7 @@ class ReconcileThread(QThread):
             self.done.emit(self.records, "没有待结算的已开赛记录。")
             return
         d0 = max(min(pend_dates) - timedelta(days=1),
-                 datetime.utcnow().date() - timedelta(days=45))
+                 datetime.now().date() - timedelta(days=45))
         d1 = max(pend_dates) + timedelta(days=1)
         c = BSDClient(token=self.token, cache_ttl=1800)
         idx = {}
@@ -43065,9 +43057,10 @@ class ReconcileThread(QThread):
                     idx[ev.get("id")] = ev
             cursor = span_end + timedelta(days=1)
         n = settle_records(self.records, idx)
-        self.done.emit(self.records,
-                       "对账完成:新结算 %d 条。" % n if n or not c.last_error
-                       else "对账失败:%s" % c.last_error)
+        msg = "对账完成:新结算 %d 条。" % n
+        if getattr(c, 'last_error', None):
+            msg += " (警告: %s)" % c.last_error
+        self.done.emit(self.records, msg)
 
 
 # =========================================================================== #
