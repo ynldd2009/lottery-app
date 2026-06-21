@@ -61089,6 +61089,445 @@ def selftest() -> None:
 
 
 # ============================================================
+# V218MainWindow — V218 总控中心主窗口
+# ============================================================
+
+class V218MainWindow(QDialog):
+    """V218 总控中心：整合 Phase2-7 的所有功能到一个对话框"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("🚀 V218 总控中心")
+        try:
+            _responsive_dlg_size(self, 820, 900)
+        except Exception:
+            self.resize(820, 900)
+        self.setAttribute(Qt.WA_DeleteOnClose, False)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        lay = QVBoxLayout(self)
+
+        title = QLabel("🚀 彩乐 V218 总控中心")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet(
+            "font-size:18px;font-weight:bold;color:white;"
+            "background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "stop:0 #0B5345,stop:0.5 #1F618D,stop:1 #7D3C98);"
+            "padding:12px;border-radius:8px;"
+        )
+        lay.addWidget(title)
+
+        tabs = QTabWidget()
+        tabs.setTabPosition(QTabWidget.North)
+        lay.addWidget(tabs, 1)
+
+        # Phase 2: 在线识别 & 数据更新
+        p2 = QWidget()
+        p2_lay = QVBoxLayout(p2)
+        self._build_phase2_tab(p2_lay)
+        tabs.addTab(p2, "📱 在线识别/更新")
+
+        # Phase 3: 数据体检 & 备份
+        p3 = QWidget()
+        p3_lay = QVBoxLayout(p3)
+        self._build_phase3_tab(p3_lay)
+        tabs.addTab(p3, "🔧 体检/备份")
+
+        # Phase 4: 预测统计 & 足彩
+        p4 = QWidget()
+        p4_lay = QVBoxLayout(p4)
+        self._build_phase4_tab(p4_lay)
+        tabs.addTab(p4, "📊 预测统计")
+
+        # Phase 5: AI训练
+        p5 = QWidget()
+        p5_lay = QVBoxLayout(p5)
+        self._build_phase5_tab(p5_lay)
+        tabs.addTab(p5, "🤖 AI训练")
+
+        # Phase 6: 训练数据
+        p6 = QWidget()
+        p6_lay = QVBoxLayout(p6)
+        self._build_phase6_tab(p6_lay)
+        tabs.addTab(p6, "📦 训练数据")
+
+        # Phase 7: 任务队列
+        p7 = QWidget()
+        p7_lay = QVBoxLayout(p7)
+        self._build_phase7_tab(p7_lay)
+        tabs.addTab(p7, "⚙️ 任务队列")
+
+        close_btn = QPushButton("关闭")
+        close_btn.clicked.connect(self.close)
+        close_btn.setMinimumHeight(36)
+        lay.addWidget(close_btn)
+
+    def _run_in_thread(self, func, on_done=None):
+        """通用后台执行"""
+        import threading
+        def _worker():
+            try:
+                result = func()
+                if on_done:
+                    QTimer.singleShot(0, lambda: on_done(result, None))
+            except Exception as e:
+                if on_done:
+                    QTimer.singleShot(0, lambda: on_done(None, str(e)))
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _result_widget(self):
+        """创建结果展示区"""
+        edit = QTextEdit()
+        edit.setReadOnly(True)
+        edit.setPlaceholderText("操作结果将显示在这里...")
+        return edit
+
+    # ── Phase 2: 在线识别 & 数据更新 ──────────────────────────
+    def _build_phase2_tab(self, lay):
+        lay.addWidget(QLabel("📱 在线OCR识别 / 二维码验票 / 数据更新"))
+
+        btn_row = QHBoxLayout()
+
+        update_btn = QPushButton("🔄 更新开奖数据")
+        update_btn.setMinimumHeight(40)
+        update_btn.setStyleSheet("background:#1A5276;color:white;font-weight:bold;border-radius:6px;")
+        update_btn.clicked.connect(self._p2_update_data)
+        btn_row.addWidget(update_btn)
+
+        check_btn = QPushButton("🎫 验票/查奖")
+        check_btn.setMinimumHeight(40)
+        check_btn.setStyleSheet("background:#117A65;color:white;font-weight:bold;border-radius:6px;")
+        check_btn.clicked.connect(self._p2_verify_ticket)
+        btn_row.addWidget(check_btn)
+
+        lay.addLayout(btn_row)
+        self._p2_result = self._result_widget()
+        lay.addWidget(self._p2_result, 1)
+
+    def _p2_update_data(self):
+        self._p2_result.setPlainText("正在更新开奖数据...")
+        try:
+            center = LotteryUpdateCenter()
+            def _do():
+                return center.update_all()
+            def _done(r, e):
+                self._p2_result.setPlainText(str(r) if r else f"错误: {e}")
+            self._run_in_thread(_do, _done)
+        except Exception as ex:
+            self._p2_result.setPlainText(f"LotteryUpdateCenter 未就绪: {ex}")
+
+    def _p2_verify_ticket(self):
+        ticket_text, ok = QInputDialog.getMultiLineText(
+            self, "验票", "请输入彩票号码（每行一注）:", "")
+        if not ok or not ticket_text.strip():
+            return
+        self._p2_result.setPlainText(f"验票功能：输入号码\n{ticket_text}\n\n请到主界面→投注记录→兑奖查询进行完整验票。")
+
+    # ── Phase 3: 数据体检 & 备份 ─────────────────────────────
+    def _build_phase3_tab(self, lay):
+        lay.addWidget(QLabel("🔧 数据体检 / 自动备份 / 修复"))
+
+        btn_row = QHBoxLayout()
+
+        health_btn = QPushButton("🩺 运行数据体检")
+        health_btn.setMinimumHeight(40)
+        health_btn.setStyleSheet("background:#6C3483;color:white;font-weight:bold;border-radius:6px;")
+        health_btn.clicked.connect(self._p3_health_check)
+        btn_row.addWidget(health_btn)
+
+        backup_btn = QPushButton("💾 立即备份")
+        backup_btn.setMinimumHeight(40)
+        backup_btn.setStyleSheet("background:#1E8449;color:white;font-weight:bold;border-radius:6px;")
+        backup_btn.clicked.connect(self._p3_backup)
+        btn_row.addWidget(backup_btn)
+
+        repair_btn = QPushButton("🔨 自动修复")
+        repair_btn.setMinimumHeight(40)
+        repair_btn.setStyleSheet("background:#B7950B;color:white;font-weight:bold;border-radius:6px;")
+        repair_btn.clicked.connect(self._p3_repair)
+        btn_row.addWidget(repair_btn)
+
+        lay.addLayout(btn_row)
+        self._p3_result = self._result_widget()
+        lay.addWidget(self._p3_result, 1)
+
+    def _p3_health_check(self):
+        self._p3_result.setPlainText("正在体检...")
+        try:
+            center = Phase3MaintenanceCenter()
+            def _do():
+                return center.run_health_check()
+            def _done(r, e):
+                self._p3_result.setPlainText(str(r or e))
+            self._run_in_thread(_do, _done)
+        except Exception as ex:
+            self._p3_result.setPlainText(f"Phase3MaintenanceCenter 未就绪: {ex}")
+
+    def _p3_backup(self):
+        self._p3_result.setPlainText("正在备份数据...")
+        try:
+            center = Phase3MaintenanceCenter()
+            def _do():
+                return center.do_backup()
+            def _done(r, e):
+                self._p3_result.setPlainText(f"备份完成: {r}" if r else f"备份失败: {e}")
+            self._run_in_thread(_do, _done)
+        except Exception as ex:
+            self._p3_result.setPlainText(f"Phase3MaintenanceCenter 未就绪: {ex}")
+
+    def _p3_repair(self):
+        self._p3_result.setPlainText("正在自动修复...")
+        try:
+            center = Phase3MaintenanceCenter()
+            def _do():
+                return center.auto_repair()
+            def _done(r, e):
+                self._p3_result.setPlainText(str(r or e))
+            self._run_in_thread(_do, _done)
+        except Exception as ex:
+            self._p3_result.setPlainText(f"Phase3MaintenanceCenter 未就绪: {ex}")
+
+    # ── Phase 4: 预测命中统计 ────────────────────────────────
+    def _build_phase4_tab(self, lay):
+        lay.addWidget(QLabel("📊 预测命中统计 / 模型评分"))
+
+        btn_row = QHBoxLayout()
+        stats_btn = QPushButton("📈 查看命中统计")
+        stats_btn.setMinimumHeight(40)
+        stats_btn.setStyleSheet("background:#1F618D;color:white;font-weight:bold;border-radius:6px;")
+        stats_btn.clicked.connect(self._p4_stats)
+        btn_row.addWidget(stats_btn)
+
+        game_combo = QComboBox()
+        for g in ["双色球","大乐透","七乐彩","快乐8","3D","排列三","排列五","七星彩"]:
+            game_combo.addItem(g)
+        self._p4_game_combo = game_combo
+        btn_row.addWidget(game_combo)
+
+        lay.addLayout(btn_row)
+        self._p4_result = self._result_widget()
+        lay.addWidget(self._p4_result, 1)
+
+    def _p4_stats(self):
+        game = self._p4_game_combo.currentText()
+        self._p4_result.setPlainText(f"正在统计 {game} 的预测命中率...")
+        try:
+            center = Phase4StatsCenter()
+            def _do():
+                return center.get_hit_stats(game)
+            def _done(r, e):
+                self._p4_result.setPlainText(str(r or e))
+            self._run_in_thread(_do, _done)
+        except Exception as ex:
+            self._p4_result.setPlainText(f"Phase4StatsCenter 未就绪: {ex}")
+
+    # ── Phase 5: AI训练 ──────────────────────────────────────
+    def _build_phase5_tab(self, lay):
+        lay.addWidget(QLabel("🤖 AI模型训练 / 特征提取 / 滚动回测"))
+
+        row1 = QHBoxLayout()
+        row1.addWidget(QLabel("玩法:"))
+        self._p5_game = QComboBox()
+        for g in ["双色球","大乐透","七乐彩","快乐8","3D","排列三","排列五","七星彩"]:
+            self._p5_game.addItem(g)
+        row1.addWidget(self._p5_game, 1)
+        lay.addLayout(row1)
+
+        btn_row = QHBoxLayout()
+
+        train_btn = QPushButton("🚀 开始训练")
+        train_btn.setMinimumHeight(40)
+        train_btn.setStyleSheet("background:#1E8449;color:white;font-weight:bold;border-radius:6px;")
+        train_btn.clicked.connect(self._p5_train)
+        btn_row.addWidget(train_btn)
+
+        backtest_btn = QPushButton("📉 滚动回测")
+        backtest_btn.setMinimumHeight(40)
+        backtest_btn.setStyleSheet("background:#6C3483;color:white;font-weight:bold;border-radius:6px;")
+        backtest_btn.clicked.connect(self._p5_backtest)
+        btn_row.addWidget(backtest_btn)
+
+        predict_btn = QPushButton("🎯 生成预测")
+        predict_btn.setMinimumHeight(40)
+        predict_btn.setStyleSheet("background:#B7950B;color:white;font-weight:bold;border-radius:6px;")
+        predict_btn.clicked.connect(self._p5_predict)
+        btn_row.addWidget(predict_btn)
+
+        lay.addLayout(btn_row)
+        self._p5_result = self._result_widget()
+        lay.addWidget(self._p5_result, 1)
+
+    def _p5_train(self):
+        game = self._p5_game.currentText()
+        self._p5_result.setPlainText(f"正在训练 {game} 模型（后台运行）...")
+        try:
+            center = LotteryTrainCenter()
+            def _do():
+                return center.train(game)
+            def _done(r, e):
+                self._p5_result.setPlainText(f"训练完成: {r}" if r else f"错误: {e}")
+            self._run_in_thread(_do, _done)
+        except Exception as ex:
+            self._p5_result.setPlainText(f"LotteryTrainCenter 未就绪: {ex}")
+
+    def _p5_backtest(self):
+        game = self._p5_game.currentText()
+        self._p5_result.setPlainText(f"正在对 {game} 进行滚动回测（后台运行，可能需要数分钟）...")
+        try:
+            bt = LotteryRollingBacktester(game)
+            def _do():
+                return bt.run()
+            def _done(r, e):
+                self._p5_result.setPlainText(str(r or e))
+            self._run_in_thread(_do, _done)
+        except Exception as ex:
+            self._p5_result.setPlainText(f"LotteryRollingBacktester 未就绪: {ex}")
+
+    def _p5_predict(self):
+        game = self._p5_game.currentText()
+        self._p5_result.setPlainText(f"正在生成 {game} 预测...")
+        try:
+            pc = LotteryPredictCenter()
+            def _do():
+                return pc.predict(game)
+            def _done(r, e):
+                self._p5_result.setPlainText(str(r or e))
+            self._run_in_thread(_do, _done)
+        except Exception as ex:
+            self._p5_result.setPlainText(f"LotteryPredictCenter 未就绪: {ex}")
+
+    # ── Phase 6: 训练数据 ────────────────────────────────────
+    def _build_phase6_tab(self, lay):
+        lay.addWidget(QLabel("📦 训练数据管理"))
+
+        btn_row = QHBoxLayout()
+
+        summary_btn = QPushButton("📋 数据摘要")
+        summary_btn.setMinimumHeight(40)
+        summary_btn.setStyleSheet("background:#1A5276;color:white;font-weight:bold;border-radius:6px;")
+        summary_btn.clicked.connect(self._p6_summary)
+        btn_row.addWidget(summary_btn)
+
+        export_btn = QPushButton("📤 导出CSV")
+        export_btn.setMinimumHeight(40)
+        export_btn.setStyleSheet("background:#145A32;color:white;font-weight:bold;border-radius:6px;")
+        export_btn.clicked.connect(self._p6_export)
+        btn_row.addWidget(export_btn)
+
+        lay.addLayout(btn_row)
+        self._p6_result = self._result_widget()
+        lay.addWidget(self._p6_result, 1)
+
+    def _p6_summary(self):
+        self._p6_result.setPlainText("正在获取训练数据摘要...")
+        try:
+            center = TrainingDataLinkCenter()
+            def _do():
+                return center.summary()
+            def _done(r, e):
+                import json as _json
+                self._p6_result.setPlainText(_json.dumps(r, ensure_ascii=False, indent=2) if r else f"错误: {e}")
+            self._run_in_thread(_do, _done)
+        except Exception as ex:
+            self._p6_result.setPlainText(f"TrainingDataLinkCenter 未就绪: {ex}")
+
+    def _p6_export(self):
+        path, _ = QFileDialog.getSaveFileName(self, "导出训练数据", "training_data.csv", "CSV (*.csv)")
+        if not path:
+            return
+        self._p6_result.setPlainText(f"正在导出到 {path}...")
+        try:
+            center = TrainingDataLinkCenter()
+            def _do():
+                return center.export_csv(path)
+            def _done(r, e):
+                self._p6_result.setPlainText(f"导出完成: {path}" if not e else f"导出失败: {e}")
+            self._run_in_thread(_do, _done)
+        except Exception as ex:
+            self._p6_result.setPlainText(f"TrainingDataLinkCenter 未就绪: {ex}")
+
+    # ── Phase 7: 任务队列 ────────────────────────────────────
+    def _build_phase7_tab(self, lay):
+        lay.addWidget(QLabel("⚙️ 训练任务队列 / 数据质量闸门"))
+
+        row1 = QHBoxLayout()
+        row1.addWidget(QLabel("彩种:"))
+        self._p7_game = QComboBox()
+        for g in ["双色球","大乐透","七乐彩","快乐8","3D","排列三","排列五","七星彩"]:
+            self._p7_game.addItem(g)
+        row1.addWidget(self._p7_game, 1)
+        lay.addLayout(row1)
+
+        btn_row = QHBoxLayout()
+
+        enqueue_btn = QPushButton("➕ 加入训练队列")
+        enqueue_btn.setMinimumHeight(40)
+        enqueue_btn.setStyleSheet("background:#1E8449;color:white;font-weight:bold;border-radius:6px;")
+        enqueue_btn.clicked.connect(self._p7_enqueue)
+        btn_row.addWidget(enqueue_btn)
+
+        run_btn = QPushButton("▶️ 执行下一任务")
+        run_btn.setMinimumHeight(40)
+        run_btn.setStyleSheet("background:#1F618D;color:white;font-weight:bold;border-radius:6px;")
+        run_btn.clicked.connect(self._p7_run_next)
+        btn_row.addWidget(run_btn)
+
+        report_btn = QPushButton("📋 任务报告")
+        report_btn.setMinimumHeight(40)
+        report_btn.setStyleSheet("background:#6C3483;color:white;font-weight:bold;border-radius:6px;")
+        report_btn.clicked.connect(self._p7_report)
+        btn_row.addWidget(report_btn)
+
+        lay.addLayout(btn_row)
+
+        quality_btn = QPushButton("🔍 数据质量检查")
+        quality_btn.setMinimumHeight(36)
+        quality_btn.setStyleSheet("background:#B7950B;color:white;font-weight:bold;border-radius:6px;")
+        quality_btn.clicked.connect(self._p7_quality)
+        lay.addWidget(quality_btn)
+
+        self._p7_result = self._result_widget()
+        lay.addWidget(self._p7_result, 1)
+
+    def _p7_enqueue(self):
+        game = self._p7_game.currentText()
+        try:
+            tid = PHASE7_QUEUE.enqueue_lottery_train(game)
+            self._p7_result.setPlainText(f"已加入队列，任务ID: {tid}\n\n{Phase7ReportCenter.task_report()}")
+        except Exception as ex:
+            self._p7_result.setPlainText(f"PHASE7_QUEUE 未就绪: {ex}")
+
+    def _p7_run_next(self):
+        self._p7_result.setPlainText("正在执行下一个训练任务...")
+        def _do():
+            return PHASE7_QUEUE.run_next_sync()
+        def _done(r, e):
+            self._p7_result.setPlainText(
+                f"{r}\n\n{Phase7ReportCenter.task_report()}" if r else f"错误: {e}"
+            )
+        self._run_in_thread(_do, _done)
+
+    def _p7_report(self):
+        try:
+            self._p7_result.setPlainText(Phase7ReportCenter.task_report())
+        except Exception as ex:
+            self._p7_result.setPlainText(f"错误: {ex}")
+
+    def _p7_quality(self):
+        game = self._p7_game.currentText()
+        self._p7_result.setPlainText(f"正在检查 {game} 数据质量...")
+        def _do():
+            return Phase7DataQualityGate.check_lottery_game(game)
+        def _done(r, e):
+            import json as _json
+            self._p7_result.setPlainText(
+                _json.dumps(r, ensure_ascii=False, indent=2) if r else f"错误: {e}"
+            )
+        self._run_in_thread(_do, _done)
+
+
+# ============================================================
 # V218 ULTIMATE FULL ENTRY
 # ============================================================
 
