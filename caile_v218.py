@@ -11254,9 +11254,11 @@ class SportComboDialog(QDialog):
         qxc_gen_btn = QPushButton("🎲 生成号码")
         qxc_gen_btn.setStyleSheet("background:#E74C3C;color:white;font-weight:bold;padding:6px;")
         def _gen_qxc():
-            nums = [self.parent.pick_numbers_by_coldhot("七星彩", f"pos{i+1}", 1)[0] for i in range(7)]
-            lines = ["号码: " + " ".join(map(str, nums))]
-            self.qxc_edit.setPlainText("\n".join(lines * self.qxc_bet_count.value()))
+            lines = []
+            for _ in range(self.qxc_bet_count.value()):
+                nums = [self.parent.pick_numbers_by_coldhot("七星彩", f"pos{i+1}", 1)[0] for i in range(7)]
+                lines.append("号码: " + " ".join(map(str, nums)))
+            self.qxc_edit.setPlainText("\n".join(lines))
         qxc_gen_btn.clicked.connect(_gen_qxc)
         layout.addWidget(qxc_gen_btn)
 
@@ -20222,7 +20224,7 @@ class LotteryApp(QMainWindow):
             n_look = min(20, len(series))
             scores = {}
             for n in nums:
-                y = [1.0 if n in draw else 0.0 for draw in series[:n_look]]
+                y = [1.0 if n in draw else 0.0 for draw in reversed(series[:n_look])]
                 # 简单线性回归 y = a*x + b，x=[0,1,...,n-1]
                 xs = list(range(n_look))
                 x_mean = (n_look - 1) / 2
@@ -22818,11 +22820,23 @@ class LotteryApp(QMainWindow):
             elif game_type == "七乐彩":
                 nums = draw_nums[:7] if len(draw_nums) >= 7 else []
             elif game_type in ["3D", "排列三"]:
-                nums = draw_nums[:3] if len(draw_nums) >= 3 else []
+                try:
+                    pi = int(area[3:]) - 1  # pos1->0, pos2->1, pos3->2
+                    nums = [draw_nums[pi] % 10] if len(draw_nums) > pi else []
+                except (ValueError, IndexError):
+                    nums = draw_nums[:3] if len(draw_nums) >= 3 else []
             elif game_type == "七星彩":
-                nums = draw_nums[:7] if len(draw_nums) >= 7 else []
+                try:
+                    pi = int(area[3:]) - 1  # pos1->0 ... pos7->6
+                    nums = [draw_nums[pi]] if len(draw_nums) > pi else []
+                except (ValueError, IndexError):
+                    nums = draw_nums[:7] if len(draw_nums) >= 7 else []
             elif game_type == "排列五":
-                nums = draw_nums[:5] if len(draw_nums) >= 5 else []
+                try:
+                    pi = int(area[3:]) - 1  # pos1->0 ... pos5->4
+                    nums = [draw_nums[pi] % 10] if len(draw_nums) > pi else []
+                except (ValueError, IndexError):
+                    nums = draw_nums[:5] if len(draw_nums) >= 5 else []
             else:
                 nums = []
             for num in all_nums:
@@ -26086,11 +26100,9 @@ class LotteryApp(QMainWindow):
                 lines = []
                 nums = list(all_selected)
                 for i in range(len(nums)):
-                    for j in range(i+1, len(nums)):
-                        # 两个号码：一个重复两次，另一个一次
-                        # 可能的组合： (a,a,b) 和 (a,b,b) 但开奖时只认组合，不认位置，所以一组号码只算一注
-                        lines.append(f"组选三: {nums[i]} {nums[i]} {nums[j]}")
-                        lines.append(f"组选三: {nums[i]} {nums[j]} {nums[j]}")
+                    for j in range(len(nums)):
+                        if i != j:
+                            lines.append(f"组选三: {nums[i]} {nums[i]} {nums[j]}")
                 bets = len(lines)
                 result = "\n".join(lines)
 
@@ -26881,7 +26893,7 @@ class LotteryApp(QMainWindow):
         filter_layout.addWidget(pos_combo)
         for start, end in intervals:
             btn = QPushButton(f"{start}-{end}")
-            btn.clicked.connect(lambda checked, s=start, e=end, p=int(pos_combo.currentIndex()): apply_interval(s, e, p))
+            btn.clicked.connect(lambda checked, s=start, e=end: apply_interval(s, e, pos_combo.currentIndex()))
             filter_layout.addWidget(btn)
 
         btn_hot = QPushButton("热号")
@@ -27499,9 +27511,9 @@ class LotteryApp(QMainWindow):
                 nums = list(all_selected)
                 lines = []
                 for i in range(len(nums)):
-                    for j in range(i+1, len(nums)):
-                        lines.append(f"组选三: {nums[i]} {nums[i]} {nums[j]}")
-                        lines.append(f"组选三: {nums[i]} {nums[j]} {nums[j]}")
+                    for j in range(len(nums)):
+                        if i != j:
+                            lines.append(f"组选三: {nums[i]} {nums[i]} {nums[j]}")
                 bets = len(lines)
                 result = "\n".join(lines)
 
@@ -27831,7 +27843,7 @@ class LotteryApp(QMainWindow):
         filter_layout.addWidget(pos_combo)
         for start, end in intervals:
             btn = QPushButton(f"{start}-{end}")
-            btn.clicked.connect(lambda checked, s=start, e=end, p=int(pos_combo.currentIndex()): apply_interval(s, e, p))
+            btn.clicked.connect(lambda checked, s=start, e=end: apply_interval(s, e, pos_combo.currentIndex()))
             filter_layout.addWidget(btn)
 
         btn_hot = QPushButton("热号")
@@ -30362,7 +30374,7 @@ class LotteryApp(QMainWindow):
         """绘制走势图"""
         self.trend_figure.clear()
         if game_type not in self.history_data or not self.history_data[game_type]:
-            ax = self.trend_figure.add_subplot(111)
+            ax = self.trend_figure.add_subplot(211)
             ax.text(0.5, 0.5, f"暂无{game_type}历史数据", ha='center', va='center')
             self.trend_canvas.draw()
             return
@@ -30375,7 +30387,7 @@ class LotteryApp(QMainWindow):
         issues = [r.get("期号", "")[-4:] for r in records]  # 取期号后四位
 
         if game_type == "双色球":
-            ax = self.trend_figure.add_subplot(111)
+            ax = self.trend_figure.add_subplot(211)
             red_data = []
             blue_data = []
             for r in records:
